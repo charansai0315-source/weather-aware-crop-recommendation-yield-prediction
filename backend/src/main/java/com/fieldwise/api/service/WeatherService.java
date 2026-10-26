@@ -16,7 +16,9 @@ import java.util.Map;
 public class WeatherService {
     private static final String GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
     private static final String FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
-    private final RestClient client = RestClient.create();
+    private final RestClient client = RestClient.builder()
+            .defaultHeader("User-Agent", "FieldwiseCropAdvisor/1.0")
+            .build();
 
     public Map<String, Object> getWeather(String location, String state) {
         String query = state == null || state.isBlank() || "Other".equalsIgnoreCase(state)
