@@ -24,6 +24,7 @@ import java.util.Map;
 
 @Service
 public class RecommendationService {
+    private static final int MAX_MODEL_ATTEMPTS = 3;
     private final HttpClient mlClient;
     private final String mlServiceUrl;
     private final String mlServiceToken;
@@ -81,11 +82,11 @@ public class RecommendationService {
                     .timeout(Duration.ofSeconds(120))
                     .POST(HttpRequest.BodyPublishers.ofByteArray(modelRequest))
                     .build();
-            HttpResponse<String> response = mlClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = sendModelRequest(httpRequest);
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 String message = response.statusCode() >= 400 && response.statusCode() < 500
                         ? "The Python crop model could not use one or more farm or weather values. Review your inputs and try again."
-                        : "The Python crop model is temporarily unavailable. Try again shortly.";
+                        : "The Python crop model is temporarily unreachable. On a free Render deployment it may be waking; wait a minute and try again.";
                 throw new MlServiceException(message,
                         new IllegalStateException("Model service returned HTTP " + response.statusCode()));
             }
@@ -96,7 +97,7 @@ public class RecommendationService {
             Thread.currentThread().interrupt();
             throw new MlServiceException("The Python crop model request was interrupted. Try again.", exception);
         } catch (IOException | IllegalArgumentException exception) {
-            throw new MlServiceException("The Python crop model is unavailable. Start the ML service and try again.", exception);
+            throw new MlServiceException("The Python crop model could not be reached. On a free Render deployment it may be waking; wait a minute and try again.", exception);
         }
         if (result == null) {
             throw new MlServiceException("The Python crop model returned an empty response.", new IllegalStateException("Empty ML response"));
@@ -105,6 +106,35 @@ public class RecommendationService {
         saveRequest(request, result);
         result.put("saved", true);
         return result;
+    }
+
+    private HttpResponse<String> sendModelRequest(HttpRequest request) throws IOException, InterruptedException {
+        for (int attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt++) {
+            HttpResponse<String> response;
+            try {
+                response = mlClient.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (IOException exception) {
+                if (attempt == MAX_MODEL_ATTEMPTS) {
+                    throw exception;
+                }
+                pauseBeforeRetry(attempt);
+                continue;
+            }
+
+            if (!isTransientModelStatus(response.statusCode()) || attempt == MAX_MODEL_ATTEMPTS) {
+                return response;
+            }
+            pauseBeforeRetry(attempt);
+        }
+        throw new IllegalStateException("The Python crop model request ended without a response.");
+    }
+
+    private static boolean isTransientModelStatus(int statusCode) {
+        return statusCode == 502 || statusCode == 503 || statusCode == 504;
+    }
+
+    private static void pauseBeforeRetry(int attempt) throws InterruptedException {
+        Thread.sleep(attempt * 2_000L);
     }
 
     public List<HistoryResponse> recentHistory() {
