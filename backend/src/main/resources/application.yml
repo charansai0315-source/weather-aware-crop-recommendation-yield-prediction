@@ -1,0 +1,29 @@
+server:
+  port: ${PORT:${SERVER_PORT:8080}}
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/fieldwise?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:fieldwise}
+    password: ${DB_PASSWORD:fieldwise_dev_only}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+fieldwise:
+  ml:
+    base-url: ${ML_SERVICE_URL:http://localhost:8001}
+    api-token: ${ML_SERVICE_TOKEN:}

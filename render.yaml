@@ -1,0 +1,65 @@
+services:
+  - type: web
+    name: fieldwise-crop-planner
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: render
+      - key: DB_HOST
+        fromDatabase:
+          name: fieldwise-crop-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: fieldwise-crop-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: fieldwise-crop-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: fieldwise-crop-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: fieldwise-crop-db
+          property: password
+      - key: ML_SERVICE_URL
+        fromService:
+          name: fieldwise-crop-model
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - fromGroup: fieldwise-ml-auth
+
+  - type: web
+    name: fieldwise-crop-model
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./ml-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: fieldwise-ml-auth
+
+databases:
+  - name: fieldwise-crop-db
+    databaseName: fieldwise
+    user: fieldwise
+    plan: free
+    region: singapore
+    postgresMajorVersion: "18"
+    diskSizeGB: 1
+    ipAllowList: []
+
+envVarGroups:
+  - name: fieldwise-ml-auth
+    envVars:
+      - key: ML_SERVICE_TOKEN
+        generateValue: true

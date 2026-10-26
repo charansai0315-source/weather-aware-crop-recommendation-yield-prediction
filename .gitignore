@@ -1,0 +1,13 @@
+.venv/
+.vscode/
+.idea/
+__pycache__/
+*.py[cod]
+*.log
+instance/
+.env
+.github/modernize/
+backend/target/
+ml-service/.venv/
+ml-service/artifacts/
+*.joblib
