@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
@@ -51,12 +50,10 @@ public class RecommendationRecord {
 
     private Double soilMoisture;
 
-    @Lob
-    @Column(nullable = false, columnDefinition = "longtext")
+    @Column(nullable = false, columnDefinition = "text")
     private String weatherJson;
 
-    @Lob
-    @Column(nullable = false, columnDefinition = "longtext")
+    @Column(nullable = false, columnDefinition = "text")
     private String resultJson;
 
     @PrePersist
