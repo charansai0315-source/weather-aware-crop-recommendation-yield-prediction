@@ -55,7 +55,6 @@ databases:
     plan: free
     region: singapore
     postgresMajorVersion: "18"
-    diskSizeGB: 1
     ipAllowList: []
 
 envVarGroups:
