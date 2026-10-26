@@ -33,6 +33,108 @@ async function readApiJson(response, appUrl, fallbackMessage) {
   return data;
 }
 
+const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
+const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+
+async function readOpenMeteoJson(url) {
+  const response = await fetch(url);
+  const body = await response.text();
+  let data;
+  try {
+    data = body ? JSON.parse(body) : {};
+  } catch {
+    const isForbidden = response.status === 403 || body.trim().toLowerCase() === "forbidden.";
+    throw new Error(isForbidden
+      ? "Open-Meteo refused this request (403 Forbidden). Try again shortly."
+      : `Weather service returned an unreadable response (HTTP ${response.status}).`);
+  }
+  if (!response.ok) {
+    throw new Error(data.reason || data.error || `Weather service request failed (HTTP ${response.status}).`);
+  }
+  return data;
+}
+
+function roundedOrNull(value, digits = 1) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+async function lookupWeather(location, state, coordinates) {
+  let place;
+  let latitude;
+  let longitude;
+
+  if (coordinates) {
+    latitude = coordinates.latitude;
+    longitude = coordinates.longitude;
+    place = {
+      name: "Current GPS location",
+      admin1: state === "Other" ? "" : state,
+      country: "India",
+    };
+  } else {
+    const query = state && state !== "Other" ? `${location}, ${state}, India` : `${location}, India`;
+    const params = new URLSearchParams({ name: query, count: "1", language: "en", countryCode: "IN" });
+    const geocoding = await readOpenMeteoJson(`${GEOCODING_URL}?${params}`);
+    place = geocoding.results?.[0];
+    if (!place) {
+      throw new Error("We could not find that place in India. Try a nearby city or district name.");
+    }
+    latitude = place.latitude;
+    longitude = place.longitude;
+  }
+
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+    current: "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m",
+    daily: "temperature_2m_max,temperature_2m_min,precipitation_sum",
+    forecast_days: "7",
+    timezone: "auto",
+  });
+  const forecast = await readOpenMeteoJson(`${FORECAST_URL}?${params}`);
+  const current = forecast.current || {};
+  const daily = forecast.daily || {};
+  const days = daily.time || [];
+  const rain = daily.precipitation_sum || [];
+  const maxTemps = daily.temperature_2m_max || [];
+  const minTemps = daily.temperature_2m_min || [];
+  const rowCount = Math.min(days.length, rain.length, maxTemps.length, minTemps.length);
+  const numericRain = rain.filter((value) => typeof value === "number" && Number.isFinite(value));
+  const numericMax = maxTemps.filter((value) => typeof value === "number" && Number.isFinite(value));
+  const numericMin = minTemps.filter((value) => typeof value === "number" && Number.isFinite(value));
+
+  return {
+    location: {
+      name: place.name || location || "Current location",
+      admin1: place.admin1 || (state === "Other" ? "" : state),
+      country: place.country || "India",
+      latitude,
+      longitude,
+    },
+    updatedAt: current.time || null,
+    current: {
+      temperatureC: roundedOrNull(current.temperature_2m),
+      humidityPct: roundedOrNull(current.relative_humidity_2m, 0),
+      precipitationMm: roundedOrNull(current.precipitation),
+      windKmh: roundedOrNull(current.wind_speed_10m),
+    },
+    next7Days: {
+      precipitationMm: numericRain.length ? roundedOrNull(numericRain.reduce((sum, value) => sum + value, 0)) : null,
+      maxTempC: numericMax.length ? roundedOrNull(Math.max(...numericMax)) : null,
+      minTempC: numericMin.length ? roundedOrNull(Math.min(...numericMin)) : null,
+    },
+    daily: Array.from({ length: rowCount }, (_, index) => ({
+      date: days[index],
+      rainMm: roundedOrNull(rain[index]),
+      maxTempC: roundedOrNull(maxTemps[index]),
+      minTempC: roundedOrNull(minTemps[index]),
+    })),
+    timezone: forecast.timezone || "",
+  };
+}
+
 weatherButton.addEventListener("click", loadWeather);
 locationButton.addEventListener("click", useCurrentLocation);
 plannerForm.addEventListener("submit", submitPlan);
@@ -74,13 +176,7 @@ async function loadWeather() {
 
   setBusy(weatherButton, true, "Finding forecast…");
   try {
-    const params = new URLSearchParams({ location, state });
-    if (currentCoordinates) {
-      params.set("latitude", currentCoordinates.latitude);
-      params.set("longitude", currentCoordinates.longitude);
-    }
-    const response = await fetch(`/api/weather?${params}`);
-    const data = await readApiJson(response, "http://localhost:8081", "Weather lookup failed");
+    const data = await lookupWeather(location, state, currentCoordinates);
     weatherSnapshot = data;
     renderWeather(data);
     weatherCard.classList.remove("hidden");
@@ -91,7 +187,7 @@ async function loadWeather() {
     return true;
   } catch (error) {
     weatherMessage.textContent = error.message === "Failed to fetch"
-      ? "The app server is offline. Start it with run.ps1, then refresh this page."
+      ? "Could not reach the weather service from this browser. Check your connection and try again."
       : (error.message || "Could not load the weather right now.");
     weatherMessage.style.color = "#a24b3e";
     return false;

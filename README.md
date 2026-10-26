@@ -8,7 +8,7 @@ Fieldwise combines a farmer-entered soil test, a location-based weather forecast
 - **Backend:** Java 25 (LTS) and Spring Boot 3.5.16 REST API.
 - **Database:** MySQL 8.4. The API creates/updates the `recommendation_history` table and saves recommendation inputs, forecast snapshots, and model results.
 - **Machine learning:** Python 3.13, scikit-learn Random Forest for crop ranking, and Extra Trees regression for historical yield benchmarks.
-- **Weather:** Open-Meteo geocoding and forecast APIs.
+- **Weather:** The browser calls Open-Meteo geocoding and forecast APIs directly so free Render services do not share weather requests through a common outbound IP.
 - **Local runtime:** Docker Compose.
 
 ## Run on Windows
@@ -71,7 +71,7 @@ Data sources:
 
 ## API overview
 
-- `GET /api/weather?location=Hyderabad&state=Telangana` — look up weather and a seven-day forecast.
+- `GET /api/weather?location=Hyderabad&state=Telangana` — server-side weather lookup for API clients; the browser UI calls Open-Meteo directly.
 - `POST /api/recommend` — request model rankings; inputs and results are persisted to MySQL.
 - `GET /api/history` — return the latest 20 recommendations.
 - `GET /actuator/health` — check Spring Boot health.
